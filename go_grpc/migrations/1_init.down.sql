@@ -1,0 +1,3 @@
+-- Откат миграции: удаление таблиц
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS apps;

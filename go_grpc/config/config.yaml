@@ -1,0 +1,7 @@
+env: "local"              # Окружение: local, dev, prod
+storage_path: "./storage/sso.db"  # Путь к файлу SQLite БД
+migrations_path: "./migrations"   # Путь к папке с миграциями
+token_ttl: 1h             # Время жизни JWT токена
+grpc:
+  port: 44044             # Порт gRPC сервера
+  timeout: 10h            # Таймаут gRPC соединений

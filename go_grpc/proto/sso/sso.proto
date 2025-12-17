@@ -1,0 +1,53 @@
+// Версия ProtoBuf
+syntax = "proto3";
+
+// Пространство имен для предотвращения конфликтов
+package auth;
+
+// Настройки генерации Go кода
+option go_package = "gen/go/sso;ssov1";
+
+// Сервис аутентификации и авторизации
+service Auth {
+   // Регистрация нового пользователя
+   rpc Register (RegisterRequest) returns (RegisterResponse);
+
+   // Вход в систему с получением токена
+   rpc Login (LoginRequest) returns (LoginResponse);
+
+   // Проверка прав администратора
+   rpc IsAdmin (IsAdminRequest) returns (IsAdminResponse);
+}
+
+// Запрос на регистрацию
+message RegisterRequest {
+   string email = 1;    // Email пользователя
+   string password = 2; // Пароль пользователя
+}
+
+// Ответ на регистрацию
+message RegisterResponse {
+   int64 user_id = 1;   // ID зарегистрированного пользователя
+}
+
+// Запрос на вход
+message LoginRequest {
+   string email = 1;    // Email для входа
+   string password = 2; // Пароль для входа 
+   int32 app_id = 3;    // ID приложения, в которое входим
+}
+
+// Ответ на вход
+message LoginResponse {
+    string token = 1;   // JWT токен для аутентификации
+}
+
+// Запрос проверки администратора
+message IsAdminRequest {
+    int64 user_id = 1;  // ID пользователя для проверки
+}
+
+// Ответ проверки администратора
+message IsAdminResponse {
+    bool is_admin = 1;  // Результат проверки
+}
