@@ -1,0 +1,80 @@
+
+# Создание bridge сети для изоляции контейнеров Kafka
+# Все контейнеры в одной сети видят друг друга по имени хоста
+networks:
+  kafka-net:
+    driver: bridge
+
+services:
+  # Распределенный координатор, необходимый для работы Kafka
+  zoo1:
+    image: confluentinc/cp-zookeeper:7.3.2  # Официальный образ от Confluent
+    hostname: zoo1                          # Внутреннее имя хоста в сети Docker
+    container_name: zoo1                    # Имя контейнера
+    ports: 
+      - "2181:2181"                         # Проброс порта для доступа с хоста
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181           # Порт для клиентских подключений
+      ZOOKEEPER_SERVER_ID: 1                # Уникальный ID сервера в кластере Zookeeper
+      ZOOKEEPER_SERVERS: zoo1:2888:3888     # Список всех серверов Zookeeper в кластере
+    networks: 
+      - kafka-net                           # Подключаем к сети kafka-net
+  # Брокер Kafka №1  
+  kafka1:
+    image: confluentinc/cp-kafka:7.3.2
+    hostname: kafka1
+    container_name: kafka1
+    ports:
+      - "9092:9092" # Для внешних подключений с хоста (EXTERNAL listener)
+      - "29092:29092" # Для подключений из других контейнеров (DOCKER listener)
+    environment:
+     # Список доступных для подключения адресов
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:19092,EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9092,DOCKER://host.docker.internal:29092
+      # Сопоставление listener'ов с протоколами безопасности
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+      # Listener для общения между брокерами
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Адрес Zookeeper для хранения метаданных
+      KAFKA_ZOOKEEPER_CONNECT: "zoo1:2181"
+      # Уникальный идентификатор брокера в кластере
+      KAFKA_BROKER_ID: 1
+    networks:
+      - kafka-net
+    depends_on:
+      - zoo1
+  # Брокер Kafka №2
+  kafka2:
+    image: confluentinc/cp-kafka:7.3.2
+    hostname: kafka2
+    container_name: kafka2
+    ports:
+      - "9093:9093"
+      - "29093:29093"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:19093,EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9093,DOCKER://host.docker.internal:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zoo1:2181"
+      KAFKA_BROKER_ID: 2
+    networks:
+      - kafka-net
+    depends_on:
+      - zoo1
+  # Брокер Kafka №3
+  kafka3:
+    image: confluentinc/cp-kafka:7.3.2
+    hostname: kafka3
+    container_name: kafka3
+    ports:
+      - "9094:9094"
+      - "29094:29094"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka3:19094,EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9094,DOCKER://host.docker.internal:29094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zoo1:2181"
+      KAFKA_BROKER_ID: 3
+    networks:
+      - kafka-net
+    depends_on:
+      - zoo1
