@@ -1,2 +1,3 @@
-mk_go - simple restful api with go and gin by https://go.dev/doc/tutorial/web-service-gin
-go_rest - URL Shortener - Сервис сокращения ссылок
+- mk_go - simple restful api with go and gin by https://go.dev/doc/tutorial/web-service-gin
+- go_rest - URL Shortener - Сервис сокращения ссылок
+- go_grpc -  gRPC SSO сервер
