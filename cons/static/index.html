@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consensus Network Simulator</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Source+Code+Pro&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- <header class="app-header">
+            <h1><i class="fas fa-network-wired"></i> Consensus Network Simulator</h1>
+            <div class="network-status">
+                <span class="status-indicator connected" id="connectionStatus"></span>
+                <span id="nodeCount">Nodes: 0</span>
+                <span id="consensusStatus">Status: IDLE</span>
+            </div>
+        </header> -->
+
+        <div class="main-content">
+            <!-- Левая панель: Визуализация сети -->
+            <div class="visualization-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-project-diagram"></i> Network Visualization</h2>
+                    <div class="visualization-controls">
+                        <button id="btnResetView"><i class="fas fa-sync-alt"></i> Reset View</button>
+                        <!-- <div class="view-options">
+                            <label><input type="radio" name="viewMode" value="dynamic" checked> Dynamic</label>
+                            <label><input type="radio" name="viewMode" value="hierarchical"> Hierarchical</label>
+                        </div> -->
+                    </div>
+                </div>
+                <div id="networkCanvas"></div>
+                <div class="legend">
+                    <div class="legend-item">
+                        <span class="legend-color node-leader"></span> Leader
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color node-propose"></span> Proposing
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color node-vote"></span> Voting
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color node-decided"></span> Decided
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color node-offline"></span> Offline
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая панель: Управление и логи -->
+            <div class="control-panel">
+                <!-- Панель управления узлами -->
+                <div class="control-section">
+                    <h3><i class="fas fa-sliders-h"></i> Node Management</h3>
+                    
+                    <div class="form-group">
+                        <div class="input-with-button">
+                            <input type="text" id="nodeIdInput" placeholder="Enter node ID (e.g., Node5)" maxlength="20">
+                            <button id="btnAddNode" class="btn-primary">
+                                <i class="fas fa-plus-circle"></i> Add Node
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-with-button">
+                            <input type="text" id="removeNodeId" placeholder="Node ID to remove">
+                            <button id="btnRemoveNode" class="btn-danger">
+                                <i class="fas fa-minus-circle"></i> Remove Node
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <h4><i class="fas fa-link"></i> Create Connection</h4>
+                        <div class="connection-inputs">
+                            <input type="text" id="node1Input" placeholder="First node ID">
+                            <span class="connection-arrow">↔</span>
+                            <input type="text" id="node2Input" placeholder="Second node ID">
+                            <button id="btnConnectNodes" class="btn-secondary">
+                                <i class="fas fa-plug"></i> Connect
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="quick-actions">
+                        <h4><i class="fas fa-bolt"></i> Quick Actions</h4>
+                        <div class="action-buttons">
+                            <button id="btnAddRandomNode" class="btn-secondary">
+                                <i class="fas fa-random"></i> Add Random Node
+                            </button>
+                            <button id="btnCreateMesh" class="btn-secondary">
+                                <i class="fas fa-th"></i> Full Mesh
+                            </button>
+                            <button id="btnCreateRing" class="btn-secondary">
+                                <i class="fas fa-circle"></i> Ring Topology
+                            </button>
+                            <button id="btnDisconnectAll" class="btn-secondary">
+                                <i class="fas fa-unlink"></i> Disconnect All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Панель консенсуса -->
+                <div class="control-section">
+                    <h3><i class="fas fa-handshake"></i> Consensus Control</h3>
+                    
+                    <div class="form-group">
+                        <label for="proposalValue">Proposal Value:</label>
+                        <input type="text" id="proposalValue" value="Block_1" placeholder="Value to propose">
+                    </div>
+
+                    <div class="consensus-buttons">
+                        <button id="btnStartConsensus" class="btn-consensus">
+                            <i class="fas fa-play"></i> Start Consensus Round
+                        </button>
+                        <button id="btnResetConsensus" class="btn-secondary">
+                            <i class="fas fa-redo"></i> Reset State
+                        </button>
+                    </div>
+
+                    <div class="consensus-info">
+                        <h4><i class="fas fa-info-circle"></i> Current Round Info</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">Leader:</span>
+                                <span id="currentLeader" class="info-value">None</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Phase:</span>
+                                <span id="currentPhase" class="info-value">IDLE</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Decision:</span>
+                                <span id="currentDecision" class="info-value">None</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Votes Yes/No:</span>
+                                <span id="voteCount" class="info-value">0/0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Логи событий -->
+                <div class="control-section logs-section">
+                    <h3><i class="fas fa-clipboard-list"></i> Event Logs</h3>
+                    <div class="log-controls">
+                        <button id="btnClearLogs" class="btn-small">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                        <button id="btnPauseLogs" class="btn-small">
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+                        <!-- <div class="log-filter">
+                            <label>
+                                <input type="checkbox" name="logFilter" value="message" checked> Messages
+                            </label>
+                            <label>
+                                <input type="checkbox" name="logFilter" value="nodeUpdate" checked> Node Updates
+                            </label>
+                            <label>
+                                <input type="checkbox" name="logFilter" value="consensus" checked> Consensus
+                            </label>
+                        </div> -->
+                    </div>
+                    <div id="eventLogs" class="event-logs">
+                        <div class="log-entry system">
+                            <span class="log-time">[12:00:00]</span>
+                            <span class="log-message">System initialized. Waiting for connection...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer со статистикой -->
+        <footer class="app-footer">
+            <div class="stats">
+                <div class="stat-item">
+                    <i class="fas fa-server"></i>
+                    <span>Active Nodes: <span id="activeNodesCount">0</span></span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>Connections: <span id="connectionsCount">0</span></span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-history"></i>
+                    <span>Consensus Rounds: <span id="roundsCount">0</span></span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-clock"></i>
+                    <span>Uptime: <span id="uptimeCounter">00:00:00</span></span>
+                </div>
+            </div>
+            <div class="footer-controls">
+                <button id="btnExportLogs" class="btn-small">
+                    <i class="fas fa-download"></i> Export Logs
+                </button>
+                <button id="btnSimulateFailure" class="btn-small btn-danger">
+                    <i class="fas fa-bug"></i> Simulate Failure
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Модальное окно для информации об узле -->
+    <div id="nodeInfoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-server"></i> Node Details</h2>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="node-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Node ID:</span>
+                        <span id="detailNodeId" class="detail-value"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Status:</span>
+                        <span id="detailStatus" class="detail-value"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Consensus Phase:</span>
+                        <span id="detailPhase" class="detail-value"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Decision:</span>
+                        <span id="detailDecision" class="detail-value"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Connections:</span>
+                        <div id="detailConnections" class="connections-list"></div>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Message Queue:</span>
+                        <span id="detailQueue" class="detail-value">0 messages</span>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="btnToggleNode" class="btn-secondary">
+                        <i class="fas fa-power-off"></i> Toggle Online/Offline
+                    </button>
+                    <button id="btnDisconnectNode" class="btn-secondary">
+                        <i class="fas fa-unlink"></i> Disconnect All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
