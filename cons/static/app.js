@@ -9,7 +9,6 @@ class ConsensusSimulator {
         this.logsPaused = false;
         this.selectedNodeId = null;
         this.connected = false;
-        this.messageLines = {};
         
         this.initializeWebSocket();
         this.initializeNetwork();
@@ -36,11 +35,6 @@ class ConsensusSimulator {
         this.updateNetworkStats();
     }
 
-    startConsensusAnimation() {
-        // Добавляем анимацию для узлов, которые находятся в фазе консенсуса
-        this.addLog("Consensus animation started", 'system');
-    }
-
     initializeWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -49,15 +43,11 @@ class ConsensusSimulator {
         
         this.ws.onopen = () => {
             this.connected = true;
-        //     // document.getElementById('connectionStatus').className = 'status-indicator connected';
-        //     // document.getElementById('connectionStatus').nextSibling.textContent = 'Connected';
             this.addLog('WebSocket connection established', 'system');
         };
         
         this.ws.onclose = () => {
             this.connected = false;
-            document.getElementById('connectionStatus').className = 'status-indicator disconnected';
-            document.getElementById('connectionStatus').nextSibling.textContent = 'Disconnected';
             this.addLog('WebSocket connection lost. Reconnecting in 3 seconds...', 'system');
             
             setTimeout(() => {
@@ -155,13 +145,12 @@ class ConsensusSimulator {
         });
     }
 
-    handleWebSocketMessage(data) {
-        try {
-            const message = JSON.parse(data);
-            
-            switch (message.type) {
-                case 'init':
-                    this.handleNetworkInit(message.data);
+    handleWebSocketMessage(data) {  
+        const message = JSON.parse(data);
+        console.log("Parsed message:", message);          
+        switch (message.type) {
+            case 'init':
+                this.handleNetworkInit(message.data);
                     break;
                 case 'nodeAdded':
                     this.handleNodeAdded(message.data);
@@ -195,10 +184,8 @@ class ConsensusSimulator {
                     this.handleError(message.data);
                     break;
             }
-        } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-        }
     }
+
 
     handleConnectionsUpdate(connections) {
         console.log("Updating connections:", connections);
@@ -207,7 +194,10 @@ class ConsensusSimulator {
         
         // Создаем набор текущих связей
         const currentEdges = new Set();
-        edges.get().forEach(edge => currentEdges.add(edge.id));
+        edges.get().forEach(edge => {
+            console.log(`Current edge: ${edge.id} (${edge.from} ↔ ${edge.to})`);
+            currentEdges.add(edge.id);
+        });
         
         // Создаем набор новых связей
         const newEdges = new Set();
@@ -215,10 +205,21 @@ class ConsensusSimulator {
         if (Array.isArray(connections)) {
             connections.forEach(connection => {
                 const edgeId = connection.id;
+
+                if (!edgeId) {
+                    console.warn("Connection missing id:", connection);
+                    return;
+                }
+            
                 newEdges.add(edgeId);
 
-                // Используем данные из connection напрямую, так как они приходят с сервера
-                const dashes = connection.dashes || false;
+                // Получаем информацию о статусе узлов из connection или из локальных данных
+                const fromNode = this.nodes[connection.from] || { online: connection.fromOnline || true };
+                const toNode = this.nodes[connection.to] || { online: connection.toOnline || true };
+
+                // Используем dashes из connection или вычисляем на основе статуса узлов
+                const dashes = connection.dashes !== undefined ? 
+                    connection.dashes : (!fromNode.online || !toNode.online);
                 
                 if (!currentEdges.has(edgeId)) {
                     // Добавляем новую связь
@@ -230,6 +231,16 @@ class ConsensusSimulator {
                         color: dashes ? '#6b7280' : '#4b5563',
                         width: dashes ? 1.5 : 2
                     });
+
+                    console.log("Adding edge:", edgeData);
+                    edges.add(edgeData);
+
+                    // Сохраняем в локальном словаре
+                    this.edges[edgeId] = {
+                        from: connection.from,
+                        to: connection.to,
+                        dashes: dashes
+                    };
                 } else {
                     // Обновляем существующую связь
                     edges.update({
@@ -238,17 +249,19 @@ class ConsensusSimulator {
                         color: dashes ? '#6b7280' : '#4b5563',
                         width: dashes ? 1.5 : 2
                     });
+
+                    console.log("Updating edge:", edgeData);
+                    edges.update(edgeData);
+
+                    // Обновляем локальный словарь
+                    if (this.edges[edgeId]) {
+                        this.edges[edgeId].dashes = dashes;
+                    }
+                    
+                    console.log(`Updated existing edge: ${edgeId}`);
                 }
             });
         }
-        
-        // Удаляем только те связи, которых действительно нет в новых данных
-        edges.get().forEach(edge => {
-            if (!newEdges.has(edge.id)) {
-                edges.remove(edge.id);
-                delete this.edges[edge.id];
-            }
-        });
         
         this.updateNetworkStats();
     }
@@ -281,6 +294,154 @@ class ConsensusSimulator {
                 }, 300);
             }
         }
+    }
+
+    handleConsensusStart(leaderId, proposal) {
+        console.log(`Consensus started: Leader=${leaderId}, Proposal=${proposal}`);
+        
+        // Обновляем UI
+        this.updateConsensusUI(leaderId, proposal);
+        
+        // Визуализируем начало раунда
+        this.visualizeConsensusStart(leaderId, proposal);
+        
+        // Анимируем лидера
+        this.animateLeaderProposal(leaderId);
+    }
+
+    updateConsensusUI(leaderId, proposal) {
+        // Обновляем элементы UI, если они существуют
+        const proposalElement = document.getElementById('proposalValue');
+        if (proposalElement && proposal) {
+            proposalElement.value = proposal;
+        }
+        
+        // Можно добавить временное уведомление
+        this.showNotification(`Consensus round started! Leader: ${leaderId}, Proposal: ${proposal}`, 'consensus');
+    }
+
+    animateLeaderProposal(leaderId) {
+        const leaderNode = this.network.body.nodes[leaderId];
+        if (!leaderNode) return;
+        
+        // Пульсирующая анимация для лидера
+        let pulseCount = 0;
+        const originalColor = this.getNodeColor(this.nodes[leaderId]);
+        const pulseColor = { background: '#fbbf24', border: '#f59e0b' };
+        
+        const pulseInterval = setInterval(() => {
+            leaderNode.setOptions({
+                color: pulseCount % 2 === 0 ? pulseColor : originalColor,
+                size: pulseCount % 2 === 0 ? 45 : 40
+            });
+            
+            pulseCount++;
+            if (pulseCount > 10) {
+                clearInterval(pulseInterval);
+                leaderNode.setOptions({
+                    color: originalColor,
+                    size: 40
+                });
+            }
+        }, 400);
+        
+        // Рассылаем "волны" предложения
+        setTimeout(() => {
+            this.createProposalRipple(leaderId);
+        }, 500);
+    }
+
+    createProposalRipple(sourceNodeId) {
+        // Находим всех соседей лидера
+        const edges = this.network.body.data.edges.get();
+        const neighbors = new Set();
+        
+        edges.forEach(edge => {
+            if (edge.from === sourceNodeId) neighbors.add(edge.to);
+            if (edge.to === sourceNodeId) neighbors.add(edge.from);
+        });
+        
+        // Анимируем передачу предложения каждому соседу
+        neighbors.forEach(neighborId => {
+            this.animateMessageFlow(sourceNodeId, neighborId, '#3b82f6', 'proposal');
+        });
+    }
+
+    animateMessageFlow(fromNodeId, toNodeId, color, messageType = 'message') {
+        // Создаем временную линию для анимации сообщения
+        const edgeId = `msg-${Date.now()}-${fromNodeId}-${toNodeId}`;
+        const edges = this.network.body.data.edges;
+        
+        // Получаем существующую связь или создаем временную
+        const existingEdge = this.getExistingEdge(fromNodeId, toNodeId);
+        
+        if (existingEdge) {
+            // Анимируем существующую связь
+            this.animateExistingEdge(existingEdge.id, color);
+        } else {
+            // Создаем временную связь для анимации
+            edges.add({
+                id: edgeId,
+                from: fromNodeId,
+                to: toNodeId,
+                color: color,
+                width: 4,
+                dashes: true,
+                smooth: true
+            });
+            
+            // Удаляем через 2 секунды
+            setTimeout(() => {
+                edges.remove(edgeId);
+            }, 2000);
+        }
+        
+        // Обновляем статус получателя
+        const toNode = this.nodes[toNodeId];
+        if (toNode && messageType === 'proposal') {
+            // Временно меняем фазу узла для визуализации
+            const originalPhase = toNode.phase;
+            toNode.phase = 'PROPOSE';
+            
+            setTimeout(() => {
+                toNode.phase = originalPhase;
+                this.updateNodeVisualization(toNodeId, { phase: 'PROPOSE' });
+            }, 1000);
+        }
+    }
+
+    getExistingEdge(fromNodeId, toNodeId) {
+        const edges = this.network.body.data.edges.get();
+        return edges.find(edge => 
+            (edge.from === fromNodeId && edge.to === toNodeId) ||
+            (edge.from === toNodeId && edge.to === fromNodeId)
+        );
+    }
+
+    animateExistingEdge(edgeId, color) {
+        const edge = this.network.body.edges[edgeId];
+        if (!edge) return;
+        
+        const originalColor = edge.options.color;
+        const originalWidth = edge.options.width;
+        
+        // Пульсирующая анимация
+        let pulseCount = 0;
+        const pulseInterval = setInterval(() => {
+            edge.setOptions({
+                color: pulseCount % 2 === 0 ? color : originalColor,
+                width: pulseCount % 2 === 0 ? 4 : originalWidth
+            });
+            
+            pulseCount++;
+            if (pulseCount > 6) {
+                clearInterval(pulseInterval);
+                edge.setOptions({
+                    color: originalColor,
+                    width: originalWidth
+                });
+            }
+        }, 300);
     }
 
     animateFailedConnections() {
@@ -516,15 +677,9 @@ class ConsensusSimulator {
         // Подсчитываем голоса для текущего раунда
         let yesVotes = 0;
         let noVotes = 0;
-        let currentLeader = null;
         let currentDecision = 'None';
         
         Object.values(this.nodes).forEach(node => {
-            // Находим лидера
-            if (node.isLeader) {
-                currentLeader = node.id;
-            }
-            
             // Находим решение
             if (node.phase === 'DECIDED' && node.decision) {
                 currentDecision = node.decision;
@@ -539,18 +694,6 @@ class ConsensusSimulator {
             }
         });
         
-        // Обновляем счетчик голосов
-        const voteCountElement = document.getElementById('voteCount');
-        if (voteCountElement) {
-            voteCountElement.textContent = `${yesVotes}/${noVotes}`;
-        }
-        
-        // Обновляем решение
-        const decisionElement = document.getElementById('currentDecision');
-        if (decisionElement) {
-            decisionElement.textContent = currentDecision;
-        }
-        
         // Обновляем фазовые счетчики
         const phaseCounts = { IDLE: 0, PROPOSE: 0, VOTE: 0, DECIDED: 0 };
         Object.values(this.nodes).forEach(node => {
@@ -558,42 +701,8 @@ class ConsensusSimulator {
             phaseCounts[phase] = (phaseCounts[phase] || 0) + 1;
         });
 
-        // Обновляем статус консенсуса
-        // const consensusStatusElement = document.getElementById('consensusStatus');
-        // if (consensusStatusElement) {
-        //     const dominantPhase = Object.keys(phaseCounts)
-        //         .reduce((a, b) => phaseCounts[a] > phaseCounts[b] ? a : b);
-        //     consensusStatusElement.textContent = `Status: ${dominantPhase}`;
-        // }
-        
-        // Находим и обновляем лидера
-        const leaderElement = document.getElementById('currentLeader');
-        if (leaderElement) {
-            if (currentLeader) {
-                leaderElement.textContent = currentLeader;
-                leaderElement.style.color = '#f59e0b';
-            } else {
-                leaderElement.textContent = 'None';
-                leaderElement.style.color = '';
-            }
-        }
-        
-        // Обновляем текущую фазу
-        const phaseElement = document.getElementById('currentPhase');
-        if (phaseElement) {
-            const currentPhase = Object.keys(phaseCounts)
-                .reduce((a, b) => phaseCounts[a] > phaseCounts[b] ? a : b);
-            phaseElement.textContent = currentPhase;
-            
-            // Обновляем цвета фаз
-            const phaseColor = {
-                'IDLE': '#6b7280',
-                'PROPOSE': '#3b82f6',
-                'VOTE': '#8b5cf6',
-                'DECIDED': '#10b981'
-            };
-            phaseElement.style.color = phaseColor[currentPhase] || '#ffffff';
-        }
+        // Обновляем прогресс-бары консенсуса
+        this.updateConsensusProgress(phaseCounts, totalNodes);
     }
 
     handleConnection(message) {
@@ -785,27 +894,38 @@ class ConsensusSimulator {
             } else {
                 this.animateNodeRecovery(nodeId);
             }
-            
-            // Обновляем связанные связи
-            this.updateConnectedEdges(nodeId);
         }
-        
-        // Логируем важные изменения
-        // if (prevState.online !== node.online) {
-        //     const status = node.online ? 'online' : 'offline';
-        //     this.addLog(`Node ${nodeId} is now ${status}`, 'nodeUpdate');
-        // }
-        
-        // if (prevState.phase !== node.phase) {
-        //     this.addLog(`Node ${nodeId} changed phase: ${prevState.phase} → ${node.phase}`, 'nodeUpdate');
-        // }
-        
-        // if (prevState.isLeader !== node.isLeader) {
-        //     const leaderStatus = node.isLeader ? 'became leader' : 'is no longer leader';
-        //     this.addLog(`Node ${nodeId} ${leaderStatus}`, 'nodeUpdate');
-        // }
+
+        // Обновляем связанные связи
+        this.updateConnectedEdgesForNode(nodeId);
         
         this.updateNetworkStats();
+    }
+
+    updateConnectedEdgesForNode(nodeId) {
+        const edges = this.network.body.data.edges;
+        const node = this.nodes[nodeId];
+        
+        if (!node) return;
+        
+        // Находим все связи, связанные с этим узлом
+        edges.get().forEach(edge => {
+            if (edge.from === nodeId || edge.to === nodeId) {
+                const otherNodeId = edge.from === nodeId ? edge.to : edge.from;
+                const otherNode = this.nodes[otherNodeId];
+                
+                if (otherNode) {
+                    const dashes = !node.online || !otherNode.online;
+                    
+                    edges.update({
+                        id: edge.id,
+                        dashes: dashes,
+                        color: dashes ? '#6b7280' : '#4b5563',
+                        width: dashes ? 1.5 : 2
+                    });
+                }
+            }
+        });
     }
 
     animateEdgeFailure(edgeId) {
@@ -866,48 +986,6 @@ class ConsensusSimulator {
         });
     }
 
-    updateConnectionsForNode(nodeId) {
-        const edges = this.network.body.data.edges;
-        const node = this.nodes[nodeId];
-        
-        if (!node) return;
-        
-        // Обновляем все связи с этим узлом
-        edges.get().forEach(edge => {
-            if (edge.from === nodeId || edge.to === nodeId) {
-                const otherNodeId = edge.from === nodeId ? edge.to : edge.from;
-                const otherNode = this.nodes[otherNodeId];
-                
-                if (otherNode) {
-                    edges.update({
-                        id: edge.id,
-                        dashes: !node.online || !otherNode.online
-                    });
-                }
-            }
-        });
-    }
-
-    animateNodeChange(nodeId, prevState, newState) {
-        const node = this.network.body.nodes[nodeId];
-        if (!node) return;
-        
-        // Анимация перехода в офлайн
-        if (prevState.online && !newState.online) {
-            this.animateNodeFailure(nodeId);
-        }
-        
-        // Анимация перехода в онлайн
-        if (!prevState.online && newState.online) {
-            this.animateNodeRecovery(nodeId);
-        }
-        
-        // Анимация достижения консенсуса
-        if (newState.phase === 'DECIDED' && prevState.phase !== 'DECIDED') {
-            this.animateConsensusAchieved();
-        }
-    }
-
     animateNodeFailure(nodeId) {
         const node = this.network.body.nodes[nodeId];
         if (!node) return;
@@ -959,122 +1037,135 @@ class ConsensusSimulator {
         }, 200);
     }
 
-    animateNodePhase(nodeId, phase) {
+
+    handleConsensusMessage(message) {
+        this.addLog(message, 'consensus');
+        
+        if (typeof message === 'string') {
+            // Парсим сообщение для визуализации
+            if (message.includes('Начинается раунд консенсуса')) {
+                const match = message.match(/Лидер: (\S+)\. Предложение: (.+)/);
+                if (match) {
+                    const leaderId = match[1];
+                    const proposal = match[2];
+                    
+                    // Визуализируем начало раунда
+                    this.handleConsensusStart(leaderId, proposal);
+                }
+            }
+
+            if (message.includes('голосовал') || message.includes('voted')) {
+                const match = message.match(/Узел (\S+) (?:голосовал|voted) (\w+)/i);
+                if (match) {
+                    const nodeId = match[1];
+                    const vote = match[2];
+                    
+                    // Анимируем голосование
+                    this.animateVote(nodeId, vote);
+                }
+            }
+            
+            if (message.includes('Лидер') && message.includes('предложил значение')) {
+                const match = message.match(/Лидер (\S+) предложил значение: (.+)/);
+                if (match) {
+                    const leaderId = match[1];
+                    const value = match[2];
+                    
+                    // Анимация предложения
+                    this.animateProposal(leaderId, value);
+                }
+            }
+            
+            if (message.includes('КОНСЕНСУС ДОСТИГНУТ')) {
+                this.roundsCompleted++;
+                document.getElementById('roundsCount').textContent = this.roundsCompleted;
+                
+                // Извлекаем решение
+                const match = message.match(/Решение: (.+)/);
+                if (match) {
+                    const decision = match[1];
+                    this.celebrateConsensus(decision);
+                }
+            }
+
+            // Обработка сообщений о передаче предложения
+            if (message.includes('рассылает PROPOSE') || message.includes('broadcasts PROPOSE')) {
+                const match = message.match(/Узел (\S+) (?:рассылает|broadcasts) PROPOSE/);
+                if (match) {
+                    const senderId = match[1];
+                    // Визуализируем рассылку предложения
+                    this.visualizeProposalBroadcast(senderId);
+                }
+            }
+            
+            // Обработка получения предложения
+            if (message.includes('получил') && message.includes('PROPOSE')) {
+                const match = message.match(/Узел (\S+) получил от (\S+): тип=PROPOSE/);
+                if (match) {
+                    const receiverId = match[1];
+                    const senderId = match[2];
+                    // Визуализируем получение предложения
+                    this.visualizeProposalReceived(receiverId, senderId);
+                }
+            }
+        }
+    }
+
+
+    visualizeProposalBroadcast(senderId) {
+        // Подсвечиваем отправителя
+        const senderNode = this.network.body.nodes[senderId];
+        if (senderNode) {
+            const originalColor = this.getNodeColor(this.nodes[senderId]);
+            const highlightColor = { background: '#3b82f6', border: '#2563eb' };
+            
+            senderNode.setOptions({ color: highlightColor });
+            
+            setTimeout(() => {
+                senderNode.setOptions({ color: originalColor });
+            }, 1000);
+        }
+    }
+
+    visualizeProposalReceived(receiverId, senderId) {
+        // Подсвечиваем получателя
+        const receiverNode = this.network.body.nodes[receiverId];
+        if (receiverNode) {
+            const originalColor = this.getNodeColor(this.nodes[receiverId]);
+            const highlightColor = { background: '#8b5cf6', border: '#7c3aed' };
+            
+            receiverNode.setOptions({ color: highlightColor });
+            
+            setTimeout(() => {
+                receiverNode.setOptions({ color: originalColor });
+            }, 1000);
+        }
+        
+        // Анимируем поток сообщения
+        this.animateMessageFlow(senderId, receiverId, '#8b5cf6', 'proposal');
+    }
+
+
+    animateVote(nodeId, vote) {
         const node = this.network.body.nodes[nodeId];
         if (!node) return;
         
-        switch(phase) {
-            case 'PROPOSE':
-                this.animateProposePhase(node);
-                break;
-            case 'VOTE':
-                this.animateVotePhase(node);
-                break;
-            case 'DECIDED':
-                this.animateDecidedPhase(node);
-                break;
-        }
-    }
-
-    animateProposePhase(node) {
-        // Пульсация для узла, который предлагает
-        let pulseCount = 0;
-        const pulseInterval = setInterval(() => {
-            const currentSize = node.options.size;
-            node.setOptions({
-                size: pulseCount % 2 === 0 ? currentSize * 1.2 : currentSize
-            });
-            
-            pulseCount++;
-            if (pulseCount > 8) {
-                clearInterval(pulseInterval);
-                node.setOptions({ size: this.nodes[node.id].isLeader ? 40 : 30 });
-            }
-        }, 300);
-    }
-
-    animateVotePhase(node) {
-        // Вращение для узла, который голосует
-        let rotateCount = 0;
-        const rotateInterval = setInterval(() => {
-            node.setOptions({
-                shapeProperties: {
-                    useImageSize: true,
-                    interpolation: false
-                }
-            });
-            
-            rotateCount++;
-            if (rotateCount > 6) {
-                clearInterval(rotateInterval);
-            }
-        }, 200);
-    }
-
-
-    animateDecidedPhase(node) {
-        // Сверкание для узла, который принял решение
-        let sparkleCount = 0;
-        const sparkleInterval = setInterval(() => {
-            const colors = [
-                { background: '#10b981', border: '#059669' },
-                { background: '#34d399', border: '#10b981' },
-                { background: '#10b981', border: '#059669' }
-            ];
-            
-            node.setOptions({
-                color: colors[sparkleCount % 3]
-            });
-            
-            sparkleCount++;
-            if (sparkleCount > 9) {
-                clearInterval(sparkleInterval);
-                node.setOptions({ color: this.getNodeColor(this.nodes[node.id]) });
-            }
-        }, 150);
-    }
-
-
-handleConsensusMessage(message) {
-    this.addLog(message, 'consensus');
-    
-    if (typeof message === 'string') {
-        // Парсим сообщение для визуализации
-        if (message.includes('Начинается раунд консенсуса')) {
-            const match = message.match(/Лидер: (\S+)\. Предложение: (.+)/);
-            if (match) {
-                const leaderId = match[1];
-                const proposal = match[2];
-                
-                // Визуализируем начало раунда
-                this.visualizeConsensusStart(leaderId, proposal);
-            }
-        }
+        const voteColor = vote === 'YES' 
+            ? { background: '#10b981', border: '#059669' } 
+            : { background: '#ef4444', border: '#dc2626' };
         
-        if (message.includes('Лидер') && message.includes('предложил значение')) {
-            const match = message.match(/Лидер (\S+) предложил значение: (.+)/);
-            if (match) {
-                const leaderId = match[1];
-                const value = match[2];
-                
-                // Анимация предложения
-                this.animateProposal(leaderId, value);
-            }
-        }
+        // Временно меняем цвет узла
+        const originalColor = this.getNodeColor(this.nodes[nodeId]);
+        node.setOptions({ color: voteColor });
         
-        if (message.includes('КОНСЕНСУС ДОСТИГНУТ')) {
-            this.roundsCompleted++;
-            document.getElementById('roundsCount').textContent = this.roundsCompleted;
-            
-            // Извлекаем решение
-            const match = message.match(/Решение: (.+)/);
-            if (match) {
-                const decision = match[1];
-                this.celebrateConsensus(decision);
-            }
-        }
+        // Возвращаем исходный цвет через 1 секунду
+        setTimeout(() => {
+            node.setOptions({ color: originalColor });
+        }, 1000);
+        
+        // Показываем уведомление о голосовании
+        this.showNotification(`Node ${nodeId} voted: ${vote}`, 'vote');
     }
-}
 
     visualizeConsensusStart(leaderId, proposal) {
         // Подсвечиваем лидера
@@ -1196,57 +1287,6 @@ handleConsensusMessage(message) {
         }, 300);
     }
 
-    animateConsensusAchieved() {
-        // Все узлы мигают зеленым
-        Object.keys(this.nodes).forEach(nodeId => {
-            const node = this.network.body.nodes[nodeId];
-            if (node) {
-                let blinkCount = 0;
-                const blinkInterval = setInterval(() => {
-                    const currentColor = this.getNodeColor(this.nodes[nodeId]);
-                    const successColor = {
-                        background: '#10b981',
-                        border: '#059669'
-                    };
-                    
-                    node.setOptions({
-                        color: blinkCount % 2 === 0 ? successColor : currentColor
-                    });
-                    
-                    blinkCount++;
-                    if (blinkCount > 6) {
-                        clearInterval(blinkInterval);
-                        node.setOptions({ color: currentColor });
-                    }
-                }, 200);
-            }
-        });
-        
-        // Анимация связей
-        const edges = this.network.body.edges;
-        Object.keys(edges).forEach(edgeId => {
-            const edge = edges[edgeId];
-            if (edge) {
-                let pulseCount = 0;
-                const pulseInterval = setInterval(() => {
-                    edge.setOptions({
-                        color: pulseCount % 2 === 0 ? '#10b981' : '#4b5563',
-                        width: pulseCount % 2 === 0 ? 4 : 2
-                    });
-                    
-                    pulseCount++;
-                    if (pulseCount > 5) {
-                        clearInterval(pulseInterval);
-                        edge.setOptions({ 
-                            color: '#4b5563',
-                            width: 2 
-                        });
-                    }
-                }, 300);
-            }
-        });
-    }
-
     getNodeColor(node) {
         if (!node.online) {
             return { background: '#ef4444', border: '#dc2626' };
@@ -1333,30 +1373,6 @@ handleConsensusMessage(message) {
 
         // Обновляем прогресс-бары
         this.updateConsensusProgress(phaseCounts, totalNodes);
-        
-        // Находим лидера
-        const leader = Object.values(this.nodes).find(node => node.isLeader);
-        if (leader) {
-            document.getElementById('currentLeader').textContent = leader.id;
-            document.getElementById('currentLeader').style.color = '#f59e0b';
-        } else {
-            document.getElementById('currentLeader').textContent = 'None';
-            document.getElementById('currentLeader').style.color = '';
-        }
-        
-        // Обновляем текущую фазу
-        const currentPhase = Object.keys(phaseCounts)
-            .reduce((a, b) => phaseCounts[a] > phaseCounts[b] ? a : b);
-        document.getElementById('currentPhase').textContent = currentPhase;
-        
-        // Обновляем цвета фаз
-        const phaseColor = {
-            'IDLE': '#6b7280',
-            'PROPOSE': '#3b82f6',
-            'VOTE': '#8b5cf6',
-            'DECIDED': '#10b981'
-        };
-        document.getElementById('currentPhase').style.color = phaseColor[currentPhase] || '#ffffff';
     }
 
     updateConsensusProgress(phaseCounts, totalNodes) {
@@ -1443,83 +1459,16 @@ handleConsensusMessage(message) {
         
         // Показываем модальное окно
         document.getElementById('nodeInfoModal').style.display = 'block';
-        
-        // Добавляем обработчик для кнопки в модальном окне
-        const toggleBtn = document.getElementById('btnToggleNode');
-        toggleBtn.onclick = () => this.toggleNodeOnline(nodeId);
     }
 
     toggleNodeOnline(nodeId) {
         if (!nodeId || !this.nodes[nodeId]) return;
         
-        // Временно отключаем для мгновенной обратной связи
-        const node = this.nodes[nodeId];
-        const wasOnline = node.online;
-        node.online = !node.online;
-        
-        // Визуально обновляем узел
-        const visNode = this.network.body.data.nodes;
-        visNode.update({
-            id: nodeId,
-            color: this.getNodeColor(node),
-            title: this.getNodeTooltip(node)
-        });
-        
-        // Анимируем изменение
-        if (!node.online && wasOnline) {
-            this.animateNodeFailure(nodeId);
-        } else if (node.online && !wasOnline) {
-            this.animateNodeRecovery(nodeId);
-        }
-        
-        // Обновляем связи
-        this.updateConnectedEdges(nodeId);
-        
         // Отправляем команду на сервер
         this.sendCommand('toggleNode', { nodeId: nodeId });
-        
-        this.updateNetworkStats();
-    }
-    visualizeMessage(fromNodeId, toNodeId, messageType) {
-        const fromNode = this.network.body.nodes[fromNodeId];
-        const toNode = this.network.body.nodes[toNodeId];
-        
-        if (!fromNode || !toNode) return;
-        
-        const edgeId = `msg-${Date.now()}-${fromNodeId}-${toNodeId}`;
-        const edges = this.network.body.data.edges;
-        
-        // Временная линия для сообщения
-        edges.add({
-            id: edgeId,
-            from: fromNodeId,
-            to: toNodeId,
-            color: this.getMessageColor(messageType),
-            width: 3,
-            dashes: [5, 5],
-            smooth: {
-                type: 'continuous',
-                roundness: 0.5
-            }
-        });
-        
-        // Удаляем через 2 секунды
-        setTimeout(() => {
-            edges.remove(edgeId);
-        }, 2000);
-    }
 
-    getMessageColor(messageType) {
-        switch(messageType) {
-            case 'PROPOSE':
-                return '#3b82f6'; // Синий
-            case 'VOTE':
-                return '#8b5cf6'; // Фиолетовый
-            case 'DECISION':
-                return '#10b981'; // Зеленый
-            default:
-                return '#6b7280'; // Серый
-        }
+        const node = this.nodes[nodeId];
+        this.showNotification(`Toggling node ${nodeId}...`, 'info');
     }
 
     celebrateConsensus() {
@@ -1548,9 +1497,9 @@ handleConsensusMessage(message) {
     }
 
     initializeEventListeners() {
-        
         // Управление узлами
         document.getElementById('btnAddNode').addEventListener('click', () => {
+            if (isAddingNode) return; // Если уже добавляется, игнорируем
             const nodeId = document.getElementById('nodeIdInput').value.trim();
             if (nodeId) {
                 this.sendCommand('addNode', { nodeId });
@@ -1716,23 +1665,7 @@ let simulator;
 
 document.addEventListener('DOMContentLoaded', () => {
     simulator = new ConsensusSimulator();
-    
-    // Добавляем несколько демонстрационных сообщений
-    setTimeout(() => {
-        if (simulator.connected) {
-            simulator.addLog('Network simulator ready. Try adding nodes and starting consensus!', 'system');
-            simulator.addLog('Tip: Double-click a node to toggle its online status', 'system');
-            simulator.addLog('Tip: Click a node to view detailed information', 'system');
-        }
-    }, 1000);
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-    simulator = new ConsensusSimulator();
-    
-    // Инициализируем визуализатор консенсуса
-    const consensusVisualizer = new ConsensusVisualizer(simulator);
-    
+        
     // Переопределяем обработку сообщений консенсуса
     const originalHandleConsensus = simulator.handleConsensusMessage.bind(simulator);
     simulator.handleConsensusMessage = function(message) {
@@ -1744,7 +1677,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (match) {
                     const leaderId = match[1];
                     const proposal = match[2];
-                    consensusVisualizer.visualizeConsensusStart(leaderId, proposal);
                 }
             }
         }

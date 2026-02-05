@@ -1,4 +1,3 @@
-/* Reset и базовые стили */
 * {
     margin: 0;
     padding: 0;
@@ -38,7 +37,6 @@ body {
     font-size: 1.8rem;
     font-weight: 700;
     background: linear-gradient(45deg, #4cc9f0, #4361ee);
-    /* -webkit-background-clip: text; */
     -webkit-text-fill-color: transparent;
     display: flex;
     align-items: center;
@@ -305,13 +303,6 @@ button:active {
     margin: 8px 0;
 }
 
-.consensus-info {
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 8px;
-    padding: 8px;
-    border: 1px solid #334155;
-}
-
 .info-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -554,43 +545,6 @@ button:active {
     justify-content: center;
 }
 
-
-.consensus-visualization {
-    margin-top: 20px;
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 8px;
-    padding: 15px;
-    border: 1px solid #334155;
-}
-
-.progress-bars {
-    margin-top: 10px;
-}
-
-.progress-bar {
-    margin-bottom: 12px;
-}
-
-.progress-label {
-    font-size: 0.8rem;
-    color: #94a3b8;
-    margin-bottom: 5px;
-}
-
-.progress-track {
-    height: 8px;
-    background: #1e293b;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-    border-radius: 4px;
-    transition: width 0.5s ease;
-}
-
 /* Поля ввода */
 input[type="text"] {
     width: 100%;
@@ -633,18 +587,6 @@ input[type="checkbox"] {
     .app-container {
         padding: 5px;
     }
-    
-    /* .app-header {
-        flex-direction: column;
-        gap: 10px;
-        text-align: center;
-    } */
-    
-    /* .network-status {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 15px;
-    } */
     
     .modal-content {
         width: 95%;
@@ -757,8 +699,24 @@ input[type="checkbox"] {
     border-left: 4px solid #3b82f6;
 }
 
+.notification.consensus {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
 .notification.proposal {
     border-left: 4px solid #f59e0b;
+}
+
+.notification.vote {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.notification.decision {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.notification.fade-out {
+    animation: fadeOut 0.5s ease-out forwards;
 }
 
 .notification.success {
@@ -777,6 +735,28 @@ input[type="checkbox"] {
     to {
         transform: translate(-50%, 0);
         opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
     }
 }
 
@@ -810,70 +790,6 @@ input[type="checkbox"] {
     background: #6b7280;
 }
 
-/* Добавьте в конец файла */
-
-/* Визуализация процесса консенсуса */
-.consensus-steps {
-    display: flex;
-    justify-content: space-between;
-    margin: 20px 0;
-    position: relative;
-}
-
-.consensus-step {
-    flex: 1;
-    text-align: center;
-    padding: 15px;
-    background: rgba(30, 41, 59, 0.5);
-    border-radius: 8px;
-    margin: 0 5px;
-    border: 2px solid transparent;
-    transition: all 0.3s ease;
-}
-
-.consensus-step.active {
-    border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.1);
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-}
-
-.consensus-step.completed {
-    border-color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
-}
-
-.step-number {
-    width: 30px;
-    height: 30px;
-    background: #374151;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 10px;
-    font-weight: bold;
-}
-
-.consensus-step.active .step-number {
-    background: #3b82f6;
-    animation: pulse 2s infinite;
-}
-
-.consensus-step.completed .step-number {
-    background: #10b981;
-}
-
-.step-title {
-    font-weight: 500;
-    margin-bottom: 5px;
-}
-
-.step-description {
-    font-size: 0.8rem;
-    color: #94a3b8;
-    min-height: 40px;
-}
-
 /* Анимация передачи сообщений */
 @keyframes sendMessage {
     0% {
@@ -889,67 +805,5 @@ input[type="checkbox"] {
     100% {
         stroke-dashoffset: 0;
         opacity: 0;
-    }
-}
-
-.message-path {
-    stroke-dasharray: 100;
-    stroke-dashoffset: 100;
-    animation: sendMessage 2s linear forwards;
-}
-
-/* Индикатор голосования */
-.vote-indicator {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #8b5cf6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    color: white;
-    z-index: 100;
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-}
-
-/* Панель статистики консенсуса */
-.consensus-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-top: 15px;
-}
-
-.stat-card {
-    background: rgba(30, 41, 59, 0.5);
-    border-radius: 8px;
-    padding: 10px;
-    text-align: center;
-    border: 1px solid #334155;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #3b82f6;
-    margin: 5px 0;
-}
-
-.stat-label {
-    font-size: 0.8rem;
-    color: #94a3b8;
-}
-
-/* Адаптивные стили */
-@media (max-width: 768px) {
-    .consensus-steps {
-        flex-direction: column;
-        gap: 10px;
-    }
-    
-    .consensus-stats {
-        grid-template-columns: repeat(2, 1fr);
     }
 }

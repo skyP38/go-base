@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"time"
 )
 
 type Network struct {
@@ -14,15 +13,13 @@ type Network struct {
 	DelNodeChan    chan string           // Канал для удаления узлов (по ID)
 	StopChan       chan struct{}         // Канал для остановки сети
 	NodeAdded      chan string
-	consensusTimer *time.Timer // Таймер для консенсуса
-	currentLeader  string      // Текущий лидер
 }
 
-// Создать сеть.
+// Создать сеть
 func NewNetwork() *Network {
 	network := &Network{
 		Nodes:       make(map[string]*Node),
-		MessageBus:  make(chan BroadcastMessage, 1000), // Большой буфер
+		MessageBus:  make(chan BroadcastMessage, 1000), 
 		AddNodeChan: make(chan *Node, 10),
 		DelNodeChan: make(chan string, 10),
 		StopChan:    make(chan struct{}),
@@ -76,17 +73,11 @@ func (n *Network) addNodeInternal(node *Node) {
 		"decision": node.Consensus.Decision,
 		"peers":    len(node.Peers),
 		"isLeader": node.Consensus.IsLeader,
-		"address":  node.Address,
 	}
 
 	n.MessageBus <- BroadcastMessage{
 		Type: "nodeAdded",
 		Data: nodeData,
-	}
-
-	n.MessageBus <- BroadcastMessage{
-		Type: "system",
-		Data: fmt.Sprintf("Узел %s добавлен в сеть", node.ID),
 	}
 }
 
@@ -149,35 +140,6 @@ func (n *Network) ConnectNodes(nodeID1, nodeID2 string) error {
 	return nil
 }
 
-// метод для перевыбора лидера
-func (n *Network) electNewLeader() string {
-	// Ищем первого онлайн-узла в отсортированном списке
-	var nodeIDs []string
-	for id := range n.Nodes {
-		nodeIDs = append(nodeIDs, id)
-	}
-	sort.Strings(nodeIDs)
-
-	for _, id := range nodeIDs {
-		if node, exists := n.Nodes[id]; exists && node.IsOnline {
-			// Снимаем лидерство со всех
-			for _, n := range n.Nodes {
-				n.Consensus.IsLeader = false
-			}
-			// Назначаем нового лидера
-			node.Consensus.IsLeader = true
-
-			n.MessageBus <- BroadcastMessage{
-				Type: "system",
-				Data: fmt.Sprintf("Новый лидер: %s", id),
-			}
-
-			return id
-		}
-	}
-	return ""
-}
-
 // Начать раунд консенсуса
 func (n *Network) StartConsensusRound(proposedValue interface{}) error {
 	fmt.Printf("StartConsensusRound called with value: %v\n", proposedValue)
@@ -195,7 +157,6 @@ func (n *Network) StartConsensusRound(proposedValue interface{}) error {
 	}
 	sort.Strings(nodeIDs)
 
-	// Ищем первого онлайн-узла в отсортированном списке
 	for _, id := range nodeIDs {
 		if node, exists := n.Nodes[id]; exists && node.IsOnline {
 			leader = node
@@ -208,21 +169,29 @@ func (n *Network) StartConsensusRound(proposedValue interface{}) error {
 		return fmt.Errorf("нет активных узлов")
 	}
 
-	// Назначаем лидера
-	for _, node := range n.Nodes {
-		node.Consensus.IsLeader = (node.ID == leader.ID)
-		// Отправляем обновление состояния для каждого узла
-		n.MessageBus <- BroadcastMessage{
-			Type: "nodeUpdate",
-			Data: NodeUpdate{
-				NodeID:   node.ID,
-				Phase:    node.Consensus.Phase,
-				Decision: node.Consensus.Decision,
-				Online:   node.IsOnline,
-				IsLeader: node.Consensus.IsLeader,
-			},
-		}
-	}
+	// Устанавливаем лидера
+    for _, node := range n.Nodes {
+        node.Consensus.IsLeader = (node.ID == leader.ID)
+        node.Consensus.CurrentRound++
+        node.Consensus.ReceivedVotes = make(map[string]string)
+        node.Consensus.Phase = "IDLE"
+        
+        // Отправляем обновление состояния
+        n.MessageBus <- BroadcastMessage{
+            Type: "nodeUpdate",
+            Data: NodeUpdate{
+                NodeID:   node.ID,
+                Phase:    node.Consensus.Phase,
+                Decision: node.Consensus.Decision,
+                Online:   node.IsOnline,
+                IsLeader: node.Consensus.IsLeader,
+            },
+        }
+    }
+    
+    // Устанавливаем фазу PROPOSE только для лидера
+    leader.Consensus.Phase = "PROPOSE"
+    leader.Consensus.ProposedValue = proposedValue
 
 	// Сбрасываем состояние консенсуса у всех узлов
 	for _, node := range n.Nodes {
@@ -331,7 +300,6 @@ func (n *Network) CreateRingTopology() {
 	for i := 0; i < len(nodeIDs); i++ {
 		next := (i + 1) % len(nodeIDs)
 		n.ConnectNodes(nodeIDs[i], nodeIDs[next])
-		// fmt.Println(nodeIDs[i], nodeIDs[next])
 	}
 
 	n.MessageBus <- BroadcastMessage{
@@ -437,7 +405,7 @@ func (n *Network) SimulateRandomFailure() {
 		},
 	}
 
-	// НЕ удаляем связи, только обновляем их стиль
+	// Не удаляем связи, только обновляем их стиль
 	connections := n.GetAllConnectionsForFrontend()
 	n.MessageBus <- BroadcastMessage{
 		Type: "connectionsUpdate",
@@ -462,16 +430,7 @@ func (n *Network) GetAllConnectionsForFrontend() []map[string]interface{} {
 	connections := []map[string]interface{}{}
 	added := make(map[string]bool)
 
-	// fmt.Printf("=== Debug: GetAllConnectionsForFrontend ===\n")
-	// fmt.Printf("Total nodes: %d\n", len(n.Nodes))
-
 	for _, node := range n.Nodes {
-		// fmt.Printf("Node %s has %d peers: ", node.ID, len(node.Peers))
-		// for peerID := range node.Peers {
-		// 	fmt.Printf("%s ", peerID)
-		// }
-		// fmt.Println()
-
 		for peerID := range node.Peers {
 			// Создаем уникальный идентификатор для связи (упорядоченный)
 			edgeID := ""

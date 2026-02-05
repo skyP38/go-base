@@ -7,9 +7,8 @@ import (
 
 type Node struct {
 	ID           string           // Уникальный идентификатор
-	Address      string           // Условный адрес (например, "Node1")
 	Peers        map[string]*Node // Связанные узлы (ID -> Node)
-	Consensus    *ConsensusState  // Текущее состояние консенсуса (см. этап 2)
+	Consensus    *ConsensusState  // Текущее состояние консенсуса 
 	MessageQueue chan Message     // Канал для входящих сообщений
 	Network      *Network         // Ссылка на общую сеть (для широковещательных сообщений)
 	IsOnline     bool             // Статус узла (в сети/отключен)
@@ -19,7 +18,6 @@ type Node struct {
 func NewNode(id string, network *Network) *Node {
 	return &Node{
 		ID:           id,
-		Address:      fmt.Sprintf(":%s", id), // Просто для примера
 		Peers:        make(map[string]*Node),
 		Consensus:    NewConsensusState(),
 		MessageQueue: make(chan Message, 100), // Буферизованный канал
@@ -67,17 +65,25 @@ func (n *Node) processMessages() {
 
 // Обработка входящих сообщений
 func (n *Node) handleMessage(msg Message) {
+	// Уменьшаем TTL только если это пересылка
+    if msg.To != n.ID && msg.To != "broadcast" {
+        msg.TTL--
+        if msg.TTL <= 0 {
+            fmt.Printf("[TTL EXPIRED] Сообщение от %s до %s\n", msg.From, msg.To)
+            return
+        }
+    }
+
 	// Имитация сетевой задержки
 	time.Sleep(time.Duration(50+randomInt(50)) * time.Millisecond)
 
-	// ОТЛАДКА: логируем ВСЕ сообщения
 	fmt.Printf("[DEBUG] Узел %s получил от %s: тип=%s, раунд=%d\n",
 		n.ID, msg.From, msg.Type, msg.Round)
 
 	// Пересылаем сообщение, если оно не для нас и не было перенаправлено
 	if msg.To != n.ID && msg.To != "broadcast" {
-		// Это сообщение для другого узла - перенаправляем
-		n.sendMessage(msg)
+		// Маршрутизируем через ближайшего соседа
+        n.routeMessage(msg)
 		return
 	}
 
@@ -98,17 +104,53 @@ func (n *Node) handleMessage(msg Message) {
 	}
 }
 
+func (n *Node) routeMessage(msg Message) {
+    // Простая маршрутизация: если получатель - наш сосед, отправляем напрямую
+    if peer, exists := n.Peers[msg.To]; exists && peer.IsOnline {
+        n.sendMessage(msg)
+        return
+    }
+    
+    // Ищем получателя в сети
+    if peer, exists := n.Network.Nodes[msg.To]; exists && peer.IsOnline {
+        // Если получатель не сосед, отправляем через соседей
+        for _, neighbor := range n.Peers {
+            if neighbor.IsOnline && neighbor.ID != n.ID && neighbor.ID != msg.From {
+                forwardMsg := msg
+                forwardMsg.From = n.ID
+                neighbor.MessageQueue <- forwardMsg
+                return
+            }
+        }
+    }
+}
+
 // Обработка предложения (для не-лидеров)
 func (n *Node) handlePropose(msg Message) {
 	if n.Consensus.IsLeader {
-		return // Лидер не обрабатывает свои же предложения
+		return 
 	}
 
 	n.Consensus.Phase = "VOTE"
 	n.Consensus.ProposedValue = msg.Value
 	n.Consensus.CurrentRound = msg.Round
 
-	// Простая проверка (всегда соглашаемся с непустым значением)
+	fmt.Printf("[NODE %s] Перешел в фазу VOTE, предложение: %v\n", 
+        n.ID, msg.Value)
+
+	// Отправляем событие об обновлении фазы
+    n.Network.MessageBus <- BroadcastMessage{
+        Type: "nodeUpdate",
+        Data: NodeUpdate{
+            NodeID:   n.ID,
+            Phase:    n.Consensus.Phase,
+            Decision: n.Consensus.Decision,
+            Online:   n.IsOnline,
+            IsLeader: n.Consensus.IsLeader,
+        },
+    }
+
+	// Проверка (всегда соглашаемся с непустым значением)
 	vote := "NO"
 	if msg.Value != nil && msg.Value != "" {
 		vote = "YES"
@@ -121,53 +163,84 @@ func (n *Node) handlePropose(msg Message) {
 		Type:  "VOTE",
 		Value: vote,
 		Round: msg.Round,
+		TTL:   10, 
 	})
 }
 
 // Обработка голоса (для лидера)
 func (n *Node) handleVote(msg Message) {
-	if !n.Consensus.IsLeader || n.Consensus.Phase != "VOTE" {
-		return
-	}
+    if !n.Consensus.IsLeader || n.Consensus.Phase != "VOTE" {
+        return
+    }
 
-	// Сохраняем голос
-	n.Consensus.ReceivedVotes[msg.From] = msg.Value.(string)
+    // Сохраняем голос
+    voteValue, ok := msg.Value.(string)
+    if !ok {
+        return
+    }
+    n.Consensus.ReceivedVotes[msg.From] = voteValue
 
-	// Подсчитываем ОНЛАЙН узлы
-	onlineNodes := 0
-	for _, node := range n.Network.Nodes {
-		if node.IsOnline {
-			onlineNodes++
-		}
-	}
+    fmt.Printf("[VOTE COUNT] Лидер %s получил голос от %s: %s\n", 
+        n.ID, msg.From, voteValue)
+    fmt.Printf("[VOTE COUNT] Всего голосов: %d\n", len(n.Consensus.ReceivedVotes))
 
-	yesCount := 0
-	for _, vote := range n.Consensus.ReceivedVotes {
-		if vote == "YES" {
-			yesCount++
-		}
-	}
+    // Подсчитываем онлайн узлы (исключая себя)
+    onlineNodes := 0
+    for _, node := range n.Network.Nodes {
+        if node.IsOnline && node.ID != n.ID {
+            onlineNodes++
+        }
+    }
 
-	// Проверяем, есть ли у нас большинство среди онлайн-узлов
-	if yesCount > onlineNodes/2 {
-		n.Consensus.Phase = "DECIDED"
-		n.Consensus.Decision = n.Consensus.ProposedValue
+    if onlineNodes == 0 {
+        return
+    }
 
-		// Рассылаем решение всем
-		n.broadcast(Message{
-			From:  n.ID,
-			To:    "broadcast",
-			Type:  "DECISION",
-			Value: n.Consensus.Decision,
-			Round: n.Consensus.CurrentRound,
-		})
+    yesCount := 0
+    for _, vote := range n.Consensus.ReceivedVotes {
+        if vote == "YES" {
+            yesCount++
+        }
+    }
 
-		// Отправляем событие
-		n.Network.MessageBus <- BroadcastMessage{
-			Type: "consensus",
-			Data: fmt.Sprintf("КОНСЕНСУС ДОСТИГНУТ! Решение: %v", n.Consensus.Decision),
-		}
-	}
+    fmt.Printf("[VOTE STATS] Да: %d, Всего онлайн узлов (без лидера): %d\n", 
+        yesCount, onlineNodes)
+
+    // Проверяем, есть ли у нас большинство среди онлайн-узлов
+    if yesCount > onlineNodes/2 {
+        fmt.Printf("[CONSENSUS ACHIEVED] Большинство достигнуто!\n")
+        
+        n.Consensus.Phase = "DECIDED"
+        n.Consensus.Decision = n.Consensus.ProposedValue
+
+        // Рассылаем решение всем
+        n.broadcast(Message{
+            From:  n.ID,
+            To:    "broadcast",
+            Type:  "DECISION",
+            Value: n.Consensus.Decision,
+            Round: n.Consensus.CurrentRound,
+            TTL:   5,
+        })
+
+        // Отправляем событие
+        n.Network.MessageBus <- BroadcastMessage{
+            Type: "consensus",
+            Data: fmt.Sprintf("КОНСЕНСУС ДОСТИГНУТ! Решение: %v", n.Consensus.Decision),
+        }
+
+        // Обновляем свое состояние
+        n.Network.MessageBus <- BroadcastMessage{
+            Type: "nodeUpdate",
+            Data: NodeUpdate{
+                NodeID:   n.ID,
+                Phase:    n.Consensus.Phase,
+                Decision: n.Consensus.Decision,
+                Online:   n.IsOnline,
+                IsLeader: n.Consensus.IsLeader,
+            },
+        }
+    }
 }
 
 // Обработка финального решения
@@ -191,6 +264,9 @@ func (n *Node) handleDecision(msg Message) {
 
 // Отправка сообщения конкретному узлу
 func (n *Node) sendMessage(msg Message) {
+	fmt.Printf("[SEND] %s -> %s: тип=%s, TTL=%d\n", 
+        n.ID, msg.To, msg.Type, msg.TTL)
+
 	if msg.To == "broadcast" {
 		n.broadcast(msg)
 		return
@@ -222,34 +298,27 @@ func (n *Node) sendMessage(msg Message) {
 	}
 }
 
-// Широковещательная рассылка всем узлам сети
 func (n *Node) broadcast(msg Message) {
-	// Рассылаем всем узлам в сети, кроме себя
-	for _, node := range n.Network.Nodes {
-		if node.ID != n.ID && node.IsOnline {
-			// Создаем копию сообщения для каждого узла
-			nodeMsg := Message{
-				From:  n.ID,
-				To:    node.ID,
-				Type:  msg.Type,
-				Value: msg.Value,
-				Round: msg.Round,
-			}
-
-			// Имитация задержки отправки
-			time.Sleep(time.Duration(randomInt(30)) * time.Millisecond)
-
-			// Отправляем событие для визуализации
-			n.Network.MessageBus <- BroadcastMessage{
-				Type: "message",
-				Data: fmt.Sprintf("Узел %s отправил сообщение узлу %s: тип=%s",
-					n.ID, node.ID, msg.Type),
-			}
-
-			// Отправляем сообщение
-			node.MessageQueue <- nodeMsg
-		}
-	}
+    fmt.Printf("[BROADCAST] %s рассылает %s своим соседям\n", n.ID, msg.Type)
+    
+    // Рассылаем только непосредственным соседям
+    for _, peer := range n.Peers {
+        if peer.ID != n.ID && peer.IsOnline {
+            fmt.Printf("[BROADCAST] %s -> %s\n", n.ID, peer.ID)
+            
+            // Создаем сообщение для соседа
+            peerMsg := Message{
+                From:  msg.From,
+                To:    peer.ID,
+                Type:  msg.Type,
+                Value: msg.Value,
+                Round: msg.Round,
+                TTL:   5, // Time To Live - максимальное число хопов
+            }
+            
+            n.sendMessage(peerMsg)
+        }
+    }
 }
 
 // Соединение с другим узлом
@@ -278,7 +347,7 @@ func (n *Node) Propose(value interface{}) {
 		return
 	}
 
-	n.Consensus.Phase = "PROPOSE"
+	n.Consensus.Phase = "VOTE"
 	n.Consensus.ProposedValue = value
 	n.Consensus.CurrentRound++
 	n.Consensus.ReceivedVotes = make(map[string]string) // Сбрасываем голоса

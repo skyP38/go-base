@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -15,7 +14,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // В продакшене нужно ограничить домены!
+		return true // TODO вообще нужно ограничить домены
 	},
 }
 
@@ -134,7 +133,7 @@ func (h *Hub) listenNetworkEvents() {
 			continue
 		}
 
-		// Отправляем как чистый JSON без лишних символов
+		// Отправляем как чистый JSON
 		h.broadcast <- data
 	}
 }
@@ -171,7 +170,6 @@ func (c *Client) writePump() {
 			return
 		}
 
-		// Убедимся, что сообщение - это []byte
 		var msgBytes []byte = []byte(message)
 
 		// Пишем сообщение как TextMessage
@@ -280,17 +278,10 @@ func (c *Client) handleCommand(msg []byte) {
 
 				// Останавливаем/запускаем узел при необходимости
 				if node.IsOnline {
-					// node.Start()
 					if node.StopChan == nil {
 						node.StopChan = make(chan struct{})
 					}
-					go node.Start()
 				} else {
-					// node.Stop()
-					if node.StopChan != nil {
-						close(node.StopChan)
-						node.StopChan = make(chan struct{})
-					}
 				}
 
 				// Отправляем обновление состояния
@@ -305,6 +296,12 @@ func (c *Client) handleCommand(msg []byte) {
 					},
 				}
 
+				connections := c.hub.network.GetAllConnectionsForFrontend()
+				c.hub.network.MessageBus <- network.BroadcastMessage{
+					Type: "connectionsUpdate",
+					Data: connections,
+				}
+
 				// Логируем изменение
 				status := "online"
 				if !node.IsOnline {
@@ -315,13 +312,6 @@ func (c *Client) handleCommand(msg []byte) {
 					Type: "system",
 					Data: fmt.Sprintf("Node %s manually set to %s (was %t)",
 						node.ID, status, wasOnline),
-				}
-
-				// Обновляем связи
-				connections := c.hub.network.GetAllConnectionsForFrontend()
-				c.hub.network.MessageBus <- network.BroadcastMessage{
-					Type: "connectionsUpdate",
-					Data: connections,
 				}
 			}
 		}

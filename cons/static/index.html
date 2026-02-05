@@ -11,15 +11,6 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- <header class="app-header">
-            <h1><i class="fas fa-network-wired"></i> Consensus Network Simulator</h1>
-            <div class="network-status">
-                <span class="status-indicator connected" id="connectionStatus"></span>
-                <span id="nodeCount">Nodes: 0</span>
-                <span id="consensusStatus">Status: IDLE</span>
-            </div>
-        </header> -->
-
         <div class="main-content">
             <!-- Левая панель: Визуализация сети -->
             <div class="visualization-panel">
@@ -27,10 +18,6 @@
                     <h2><i class="fas fa-project-diagram"></i> Network Visualization</h2>
                     <div class="visualization-controls">
                         <button id="btnResetView"><i class="fas fa-sync-alt"></i> Reset View</button>
-                        <!-- <div class="view-options">
-                            <label><input type="radio" name="viewMode" value="dynamic" checked> Dynamic</label>
-                            <label><input type="radio" name="viewMode" value="hierarchical"> Hierarchical</label>
-                        </div> -->
                     </div>
                 </div>
                 <div id="networkCanvas"></div>
@@ -125,28 +112,6 @@
                             <i class="fas fa-redo"></i> Reset State
                         </button>
                     </div>
-
-                    <div class="consensus-info">
-                        <h4><i class="fas fa-info-circle"></i> Current Round Info</h4>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <span class="info-label">Leader:</span>
-                                <span id="currentLeader" class="info-value">None</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Phase:</span>
-                                <span id="currentPhase" class="info-value">IDLE</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Decision:</span>
-                                <span id="currentDecision" class="info-value">None</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label">Votes Yes/No:</span>
-                                <span id="voteCount" class="info-value">0/0</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Логи событий -->
@@ -159,17 +124,6 @@
                         <button id="btnPauseLogs" class="btn-small">
                             <i class="fas fa-pause"></i> Pause
                         </button>
-                        <!-- <div class="log-filter">
-                            <label>
-                                <input type="checkbox" name="logFilter" value="message" checked> Messages
-                            </label>
-                            <label>
-                                <input type="checkbox" name="logFilter" value="nodeUpdate" checked> Node Updates
-                            </label>
-                            <label>
-                                <input type="checkbox" name="logFilter" value="consensus" checked> Consensus
-                            </label>
-                        </div> -->
                     </div>
                     <div id="eventLogs" class="event-logs">
                         <div class="log-entry system">
